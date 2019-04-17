@@ -3,13 +3,20 @@ package org.softwire.training.gasmon;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.sns.AmazonSNS;
 import com.amazonaws.services.sqs.AmazonSQS;
+import com.amazonaws.services.sqs.model.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.softwire.training.gasmon.aws.AwsClientFactory;
 import org.softwire.training.gasmon.config.Config;
+import org.softwire.training.gasmon.model.Event;
+import org.softwire.training.gasmon.model.Location;
 import org.softwire.training.gasmon.receiver.QueueSubscription;
 import org.softwire.training.gasmon.receiver.Receiver;
 import org.softwire.training.gasmon.repository.S3Repository;
+import org.softwire.training.gasmon.services.LocationsService;
+
+import java.io.IOException;
+import java.util.List;
 
 public class Main {
 
@@ -24,7 +31,7 @@ public class Main {
         }
     }
 
-    private static void run() {
+    private static void run() throws IOException {
         LOG.info("Starting to run...");
 
         Config config = new Config();
@@ -35,13 +42,25 @@ public class Main {
         AmazonS3 s3 = awsClientFactory.s3();
 
         S3Repository repository = new S3Repository(s3, config.locations.s3Bucket);
+        LocationsService locationsService = new LocationsService(repository, config.locations.s3Key);
+        List<Location> locations = locationsService.getValidLocations();
+
+        for (Location location : locations) {
+            LOG.info("{}", location);
+        }
 
         try (QueueSubscription queueSubscription = new QueueSubscription(sqs, sns, config.receiver.snsTopicArn)) {
             Receiver receiver = new Receiver(sqs, queueSubscription.getQueueUrl());
-
-            // ...
-            // Your code here!
-            // ...
+            while (true) {
+                List<Event> events = receiver.getEvents();
+                for (Event event : events) {
+                    if (locationsService.isValidLocation(event.getLocationId())) {
+                        LOG.info("{}", event);
+                    } else {
+                        LOG.info("Skipped event with invalid location ID {}", event.getLocationId());
+                    }
+                }
+            }
         }
     }
 }

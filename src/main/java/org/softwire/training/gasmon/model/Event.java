@@ -40,4 +40,12 @@ public class Event {
                 .add("timestamp", timestamp)
                 .toString();
     }
+
+    @Override
+    public boolean equals(Object object) {
+        if (this == object) return true;
+        else if (object == null) return false;
+        else return (object instanceof Event) && ((Event)object).eventId.equals(eventId);
+    }
+
 }
